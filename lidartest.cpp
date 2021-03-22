@@ -1,14 +1,9 @@
-// License: Apache 2.0. See LICENSE file in root directory.
-// Copyright(c) 2019 Intel Corporation. All Rights Reserved.
-
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
 #include <iostream>             // for cout
 #include <JetsonGPIO.h>         // for GPIO in C++
 
-// Hello RealSense example demonstrates the basics of connecting to a RealSense device
-// and taking advantage of depth data
-int main(int argc, char * argv[]) try
-{
+
+int main(int argc, char * argv[]) try {
     GPIO::setmode(GPIO::BOARD);
 
     int output_pin = 12;
@@ -20,11 +15,11 @@ int main(int argc, char * argv[]) try
     // Configure and start the pipeline
     p.start();
 
-    std::cout << "I'm alive\n";
+    std::cout << "Vision System is up and running\n";
 
-    int warmups = 0;
-    while (true)
-    {
+    int warmups = 0; // "warm up" iterations to ensure data is valid
+
+    while (true) {
         // Block program until frames arrive
         rs2::frameset frames = p.wait_for_frames();
 
@@ -38,13 +33,10 @@ int main(int argc, char * argv[]) try
         //std::cout << "\nwidth in pixels: " << width;
         //std::cout << "\nheight in pixels: " << height;
 
-        //break;
-
-        int ptsTooClose = 0;
-
-        int shaveoff = 70;
-
+        int ptsTooClose = 0; // number of points that could be a hazard
+        int shaveoff = 70; // number of pixels to shave off from either side
         warmups++;
+
         if (warmups > 30) {
             int i, j;
             int didwebreak = 0;
@@ -52,39 +44,31 @@ int main(int argc, char * argv[]) try
                 for (j = 0; j < height; j++) {
                     float dist = depth.get_distance(i, j);
                     if (dist < 0.8 && dist > 0) {
-                        //std::cout << i << " " << j << " " << dist << " meters \n";
-                        ptsTooClose++;
-                        //didwebreak = 1;
+                        ptsTooClose++; // measured a pixel too close to Herbie
                     }
                 }
             }
 
-            if (ptsTooClose > 20) {
+            if (ptsTooClose > 20) { // 20+ pixels indicate valid hazard
                 didwebreak = 1;
             }
 
             //std::cout << didwebreak << "\n";
-            GPIO::output(output_pin, didwebreak);
+            GPIO::output(output_pin, didwebreak); // output 1 if hazard, else 0
         }
-
-        // Query the distance from the camera to the object in the center of the image
-        //float dist_to_center = depth.get_distance(width / 2, height / 2);
-
-        // Print the distance
-        //std::cout << "The camera is facing an object " << dist_to_center << " meters away \r";
     }
 
     GPIO::cleanup();
 
     return EXIT_SUCCESS;
 }
-catch (const rs2::error & e)
-{
+
+catch (const rs2::error & e) {
     std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
     return EXIT_FAILURE;
 }
-catch (const std::exception& e)
-{
+
+catch (const std::exception& e) {
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
 }
