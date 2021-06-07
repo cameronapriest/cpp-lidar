@@ -1,9 +1,56 @@
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
 #include <iostream>             // for cout
 #include <JetsonGPIO.h>         // for GPIO in C++
+#include <unistd.h>		// for UART
+#include <fcntl.h>		// for UART
+#include <termios.h>		// for UART
+#include <stdio.h>
+
+
+#define PIXEL_SHAVE_OFF_SIDES 70 // number of pixels to shave off from either side
+#define PIXEL_SHAVE_OFF_GROUND 20 // number of pixels near the ground
+
+#define UART_RXD_PIN 10
+#define UART_TXD_PIN 8
+#define GND_PIN 6
+
+#define TXD_STOP 1
+#define TXD_FORWARD 2
+#define TXD_LEFT 3
+#define TXD_RIGHT 4
+
+#define RXD_START_LIDAR 1
+#define RXD_STOP_LIDAR 2
 
 
 int main(int argc, char * argv[]) try {
+
+    int uart0_filestream = -1;
+    
+    uart0_filestream = open("/dev/ttyTHS1", O_RDWR | O_NOCTTY); // could use O_NDELAY for nonblocking 
+    if (uart0_filestream == -1) {
+	printf("Error - Unable to open UART.\n");
+	perror("UART");
+	exit(-1);
+    }
+
+    printf("UART filestream opened successfully!\n");
+
+    struct termios options;
+    tcgetattr(uart0_filestream, &options);
+    options.c_cflag = B9600 | CS8 | PARENB | CLOCAL | CREAD;
+    options.c_iflag = IGNPAR;
+    options.c_oflag = 0;
+    options.c_lflag = 0;
+
+    tcflush(uart0_filestream, TCOFLUSH);
+    tcsetattr(uart0_filestream, TCSANOW, &options);
+
+    // temp - for testing UART
+    close(uart0_filestream);
+    printf("UART filestream closed.\n");
+    exit(0);
+
     GPIO::setmode(GPIO::BOARD);
 
     int output_pin = 12;
@@ -34,15 +81,13 @@ int main(int argc, char * argv[]) try {
         //std::cout << "\nheight in pixels: " << height;
 
         int ptsTooClose = 0; // number of points that could be a hazard
-        int shaveoff = 70; // number of pixels to shave off from either side
-	int groundSafety = 20; // number of pixels near the ground
 	warmups++;
 
         if (warmups > 30) {
             int i, j;
             int didwebreak = 0;
-            for (i = shaveoff; i < width-shaveoff; i++) {
-                for (j = groundSafety; j < height; j++) {
+            for (i = PIXEL_SHAVE_OFF_SIDES; i < width - PIXEL_SHAVE_OFF_SIDES; i++) {
+                for (j = PIXEL_SHAVE_OFF_GROUND; j < height; j++) {
                     float dist = depth.get_distance(i, j);
                     if (dist < 0.8 && dist > 0) {
                         ptsTooClose++; // measured a pixel too close to Herbie
