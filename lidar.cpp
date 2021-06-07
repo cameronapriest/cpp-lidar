@@ -23,12 +23,49 @@
 #define RXD_STOP_LIDAR 2
 
 
+void transmitData(int fd, uint8_t data, uint8_t dataLen) {
+    if (fd >= 0) {
+	int count = write(fd, &data, dataLen);
+    
+	if (count < 0) {
+	    printf("UART transmit error\n");
+	    perror("UART TXD");
+	    exit(-1);
+	} else {
+	    printf("Sent %d bytes - [%d].\n", count, data);
+	}
+    } else {
+	perror("File descriptor when sending");
+	exit(-1);
+    }
+}
+
+void receiveData(int fd, uint8_t * recvBuf) {
+    if (fd >= 0) {
+	int recvLen = read(fd, (void *) recvBuf, 10); // 10 is max number of bytes to read
+	
+	if (recvLen < 0) {
+	    printf("Error occured when trying to receive data - maybe no bytes?\n");
+	} else if (recvLen == 0) {
+	    printf("No data ready to be received\n");
+	} else {
+	    printf("Received %d bytes.\n", recvLen);
+	    for (int i = 0; i < recvLen; i++) {
+		printf("Byte %d: [%d]\n", i, recvBuf[i]);
+	    }
+	}
+    } else {
+	perror("File descriptor when receiving");
+	exit(-1);
+    }
+}
+
 int main(int argc, char * argv[]) try {
 
     int uart0_filestream = -1;
     
     uart0_filestream = open("/dev/ttyTHS1", O_RDWR | O_NOCTTY); // could use O_NDELAY for nonblocking 
-    if (uart0_filestream == -1) {
+    if (uart0_filestream < 0) {
 	printf("Error - Unable to open UART.\n");
 	perror("UART");
 	exit(-1);
@@ -45,6 +82,12 @@ int main(int argc, char * argv[]) try {
 
     tcflush(uart0_filestream, TCOFLUSH);
     tcsetattr(uart0_filestream, TCSANOW, &options);
+
+    uint8_t txBuf = 24;
+    transmitData(uart0_filestream, txBuf, 1);
+
+    uint8_t rxBuf[10];
+    receiveData(uart0_filestream, rxBuf); 
 
     // temp - for testing UART
     close(uart0_filestream);
