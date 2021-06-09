@@ -40,7 +40,7 @@ void transmitData(int fd, uint8_t data, uint8_t dataLen) {
     }
 }
 
-void receiveData(int fd, uint8_t * recvBuf) {
+void receiveData(int fd, unsigned char * recvBuf) {
     if (fd >= 0) {
 	int recvLen = read(fd, (void *) recvBuf, 10); // 10 is max number of bytes to read
 	
@@ -75,7 +75,7 @@ int main(int argc, char * argv[]) try {
 
     struct termios options;
     tcgetattr(uart0_filestream, &options);
-    options.c_cflag = B9600 | CS8 | PARENB | CLOCAL | CREAD;
+    options.c_cflag = B9600 | CS8 | /*PARENB |*/ CLOCAL | CREAD;
     options.c_iflag = IGNPAR;
     options.c_oflag = 0;
     options.c_lflag = 0;
@@ -83,10 +83,10 @@ int main(int argc, char * argv[]) try {
     tcflush(uart0_filestream, TCOFLUSH);
     tcsetattr(uart0_filestream, TCSANOW, &options);
 
-    uint8_t txBuf = 24;
-    transmitData(uart0_filestream, txBuf, 1);
+    //uint8_t txBuf = 50;
+    //transmitData(uart0_filestream, txBuf, 1);
 
-    uint8_t rxBuf[10];
+    unsigned char rxBuf[10];
     receiveData(uart0_filestream, rxBuf); 
 
     // temp - for testing UART

@@ -2,12 +2,23 @@
 #include <iostream>             // for cout
 #include <JetsonGPIO.h>         // for GPIO in C++
 
+#define STOP_PIN 11
+#define GO_PIN 12
+#define LEFT_PIN 16
+#define RIGHT_PIN 18
+
+#define SHAVEOFF_SIDES 128
+#define GROUND_SAFETY 20
+
+#define CLOSE_DIST 1
+#define FAR_DIST 3
 
 int main(int argc, char * argv[]) try {
     GPIO::setmode(GPIO::BOARD);
 
-    int output_pin = 12;
-    GPIO::setup(output_pin, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(GO_PIN, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(LEFT_PIN, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(RIGHT_PIN, GPIO::OUT, GPIO::LOW);
 
     // Create a Pipeline - this serves as a top-level API for streaming and processing frames
     rs2::pipeline p;
@@ -18,6 +29,8 @@ int main(int argc, char * argv[]) try {
     std::cout << "Vision System is up and running\n";
 
     int warmups = 0; // "warm up" iterations to ensure data is valid
+    int prevDidwebreak = -1;
+    int i, j;
 
     while (true) {
         // Block program until frames arrive
@@ -33,29 +46,57 @@ int main(int argc, char * argv[]) try {
         //std::cout << "\nwidth in pixels: " << width;
         //std::cout << "\nheight in pixels: " << height;
 
-        int ptsTooClose = 0; // number of points that could be a hazard
-        int shaveoff = 70; // number of pixels to shave off from either side
-	int groundSafety = 20; // number of pixels near the ground
+        int middlePoints = 0; // number of points that could be a hazard
+	int leftPoints = 0;
+	int rightPoints = 0;
+	float dist = 0;
 	warmups++;
 
         if (warmups > 30) {
-            int i, j;
             int didwebreak = 0;
-            for (i = shaveoff; i < width-shaveoff; i++) {
-                for (j = groundSafety; j < height; j++) {
-                    float dist = depth.get_distance(i, j);
-                    if (dist < 0.8 && dist > 0) {
-                        ptsTooClose++; // measured a pixel too close to Herbie
-                    }
+
+	    for (i = 0; i < SHAVEOFF_SIDES; i += 2) {
+		for (j = GROUND_SAFETY; j < height; j += 2) {
+		    dist = depth.get_distance(i, j);
+		    if (dist > CLOSE_DIST && dist < FAR_DIST) {
+			leftPoints++;
+		    }
+		}
+	    }
+
+            for (i = SHAVEOFF_SIDES; i < width-SHAVEOFF_SIDES; i += 2) {
+                for (j = GROUND_SAFETY; j < height; j += 2) {
+                    dist = depth.get_distance(i, j);
+                    /*if (dist < 0.8 && dist > 0) {
+                        middlePoints++; // measured a pixel too close to Herbie
+                    }*/
+		    if (dist > CLOSE_DIST && dist < FAR_DIST) {
+			middlePoints++;
+		    }
                 }
             }
 
-            if (ptsTooClose > 20) { // 20+ pixels indicate valid hazard
+	    for (i = width-SHAVEOFF_SIDES; i < width; i += 2) {
+		for (j = GROUND_SAFETY; j < height; j += 2) {
+		    dist = depth.get_distance(i, j);
+		    if (dist > CLOSE_DIST && dist < FAR_DIST) {
+			rightPoints++;
+		    }
+		}
+	    }
+
+	    printf("left: %d middle: %d right: %d\n", leftPoints, middlePoints, rightPoints);
+
+            if (middlePoints > 100) { // 20+ pixels indicate valid hazard
                 didwebreak = 1;
             }
 
             std::cout << didwebreak << "\n";
-            GPIO::output(output_pin, didwebreak); // output 1 if hazard, else 0
+	    if ((prevDidwebreak != didwebreak) || (prevDidwebreak == -1)) {
+		GPIO::output(GO_PIN, didwebreak); // output 1 if hazard, else 0
+	    }
+
+	    prevDidwebreak = didwebreak;
         }
     }
 
