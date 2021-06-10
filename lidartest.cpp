@@ -6,19 +6,28 @@
 #define GO_PIN 12
 #define LEFT_PIN 16
 #define RIGHT_PIN 18
+#define RECENTER_PIN 13
+#define GANTRY_RECENTERED_PIN 19
 
-#define SHAVEOFF_SIDES 128
+#define SHAVEOFF_SIDES 200
 #define GROUND_SAFETY 20
 
 #define CLOSE_DIST 1
-#define FAR_DIST 3
+#define FAR_DIST 2.3
+#define PERSON_PIXELS 1000
+
+#define LEFT_THRESHOLD 100
+#define RIGHT_THRESHOLD 100
 
 int main(int argc, char * argv[]) try {
     GPIO::setmode(GPIO::BOARD);
 
     GPIO::setup(GO_PIN, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(STOP_PIN, GPIO::OUT, GPIO::LOW);
     GPIO::setup(LEFT_PIN, GPIO::OUT, GPIO::LOW);
     GPIO::setup(RIGHT_PIN, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(RECENTER_PIN, GPIO::OUT, GPIO::LOW);
+    GPIO::setup(GANTRY_RECENTERED_PIN, GPIO::IN, GPIO::LOW);
 
     // Create a Pipeline - this serves as a top-level API for streaming and processing frames
     rs2::pipeline p;
@@ -30,7 +39,9 @@ int main(int argc, char * argv[]) try {
 
     int warmups = 0; // "warm up" iterations to ensure data is valid
     int prevDidwebreak = -1;
-    int i, j;
+    int i, j, didwebreak;
+    int goPoints, stopPoints, leftPoints, rightPoints;
+    float dist;
 
     while (true) {
         // Block program until frames arrive
@@ -46,14 +57,15 @@ int main(int argc, char * argv[]) try {
         //std::cout << "\nwidth in pixels: " << width;
         //std::cout << "\nheight in pixels: " << height;
 
-        int middlePoints = 0; // number of points that could be a hazard
-	int leftPoints = 0;
-	int rightPoints = 0;
-	float dist = 0;
+        goPoints = 0; // number of points that could be a person
+	stopPoints = 0;
+	leftPoints = 0;
+	rightPoints = 0;
+	dist = 0;
 	warmups++;
 
         if (warmups > 30) {
-            int didwebreak = 0;
+            didwebreak = 0;
 
 	    for (i = 0; i < SHAVEOFF_SIDES; i += 2) {
 		for (j = GROUND_SAFETY; j < height; j += 2) {
@@ -67,11 +79,10 @@ int main(int argc, char * argv[]) try {
             for (i = SHAVEOFF_SIDES; i < width-SHAVEOFF_SIDES; i += 2) {
                 for (j = GROUND_SAFETY; j < height; j += 2) {
                     dist = depth.get_distance(i, j);
-                    /*if (dist < 0.8 && dist > 0) {
-                        middlePoints++; // measured a pixel too close to Herbie
-                    }*/
 		    if (dist > CLOSE_DIST && dist < FAR_DIST) {
-			middlePoints++;
+			goPoints++;
+		    } else if (dist < CLOSE_DIST && dist > 0) {
+			stopPoints++;
 		    }
                 }
             }
@@ -85,16 +96,40 @@ int main(int argc, char * argv[]) try {
 		}
 	    }
 
-	    printf("left: %d middle: %d right: %d\n", leftPoints, middlePoints, rightPoints);
+	    //printf("left: %d go: %d stop: %d right: %d\n", leftPoints, goPoints, stopPoints, rightPoints);
 
-            if (middlePoints > 100) { // 20+ pixels indicate valid hazard
+	    if (leftPoints < LEFT_THRESHOLD && rightPoints < RIGHT_THRESHOLD) {
+		if (std::max(goPoints, stopPoints) == goPoints) {
+		    printf("go\n");
+		} else {
+		    printf("stop\n");
+		}
+	    } else if (leftPoints > LEFT_THRESHOLD && rightPoints < RIGHT_THRESHOLD) {
+		printf("left\n");
+		GPIO::output(LEFT_PIN, GPIO::HIGH);
+		/* while (personInCenter() == NO) {
+		    
+		}
+		GPIO::output(RECENTER_PIN, GPIO::HIGH);
+		sleep(0.5);
+		GPIO::output(LEFT_PIN, GPIO::LOW);
+		GPIO::output(RECENTER_PIN, GPIO::LOW);*/
+		//block until GANTRY_RECENTERED_PIN is set high 
+	    } else if (leftPoints < LEFT_THRESHOLD && rightPoints > RIGHT_THRESHOLD) {
+		printf("right\n");
+	    } else {
+		printf("BOTH LEFT AND RIGHT... ignoring\n");
+	    }
+
+            /*if (goPoints > PERSON_PIXELS) { // 20+ pixels indicate valid hazard
                 didwebreak = 1;
             }
 
-            std::cout << didwebreak << "\n";
+            //std::cout << didwebreak << "\n";
 	    if ((prevDidwebreak != didwebreak) || (prevDidwebreak == -1)) {
+		std::cout << didwebreak << "\n";
 		GPIO::output(GO_PIN, didwebreak); // output 1 if hazard, else 0
-	    }
+	    }*/
 
 	    prevDidwebreak = didwebreak;
         }
